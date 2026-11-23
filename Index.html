@@ -1,0 +1,346 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    :root {
+      --bg: #fff8ef;
+      --card: #ffffff;
+      --text: #3a2a1a;
+      --muted: #8a7462;
+      --accent: #e8792b;
+      --accent-dark: #c4601a;
+      --soft: #fde8d6;
+      --line: #f0e2d2;
+      --ok: #2e8b57;
+      --err: #c0392b;
+    }
+    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+    body {
+      margin: 0;
+      font-family: -apple-system, "Segoe UI", Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+    }
+    header {
+      background: var(--accent);
+      color: #fff;
+      padding: 22px 16px 28px;
+      border-radius: 0 0 22px 22px;
+      text-align: center;
+    }
+    header h1 { margin: 0; font-size: 22px; }
+    header p { margin: 4px 0 0; opacity: .9; font-size: 14px; }
+    main { max-width: 440px; margin: -14px auto 0; padding: 0 16px 32px; }
+    .card {
+      background: var(--card);
+      border-radius: 16px;
+      padding: 16px;
+      margin-bottom: 14px;
+      box-shadow: 0 2px 10px rgba(120, 70, 20, .08);
+    }
+    .label {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: .6px;
+      margin-bottom: 10px;
+    }
+    input[type=date], input[type=time], textarea {
+      width: 100%;
+      padding: 12px;
+      font-size: 16px;
+      border: 1.5px solid var(--line);
+      border-radius: 10px;
+      color: var(--text);
+      background: #fff;
+      font-family: inherit;
+    }
+    textarea { resize: vertical; min-height: 60px; }
+    .two { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .two .sub { font-size: 13px; color: var(--muted); margin-bottom: 4px; }
+    .branches { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+    .branch {
+      padding: 14px 4px;
+      border: 1.5px solid var(--line);
+      border-radius: 12px;
+      background: #fff;
+      font-size: 15px;
+      font-weight: 600;
+      color: var(--text);
+      cursor: pointer;
+    }
+    .branch small { display: block; font-weight: 400; color: var(--muted); font-size: 12px; margin-top: 2px; }
+    .branch.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+    .branch.active small { color: #ffe9d6; }
+    .item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 0;
+      gap: 8px;
+    }
+    .item + .item { border-top: 1px solid var(--line); }
+    .item .name { font-weight: 600; font-size: 16px; }
+    .item .hint { color: var(--muted); font-size: 13px; margin-top: 2px; }
+    .stepper { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+    .stepper button {
+      width: 40px; height: 40px;
+      border-radius: 50%;
+      border: none;
+      background: var(--soft);
+      color: var(--accent-dark);
+      font-size: 22px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+    .stepper input {
+      width: 58px;
+      text-align: center;
+      font-size: 18px;
+      font-weight: 700;
+      padding: 8px 4px;
+      border: 1.5px solid var(--line);
+      border-radius: 10px;
+      color: var(--text);
+    }
+    .habis {
+      margin-top: 6px;
+      padding: 4px 10px;
+      font-size: 12px;
+      font-weight: 600;
+      border-radius: 20px;
+      border: 1.5px solid var(--line);
+      background: #fff;
+      color: var(--muted);
+      cursor: pointer;
+    }
+    .habis.on { background: var(--ok); border-color: var(--ok); color: #fff; }
+    .total { display: flex; justify-content: space-between; align-items: baseline; }
+    .total .amount { font-size: 26px; font-weight: 800; color: var(--accent-dark); }
+    .breakdown { color: var(--muted); font-size: 13px; margin-top: 6px; }
+    .save {
+      width: 100%;
+      padding: 16px;
+      font-size: 17px;
+      font-weight: 700;
+      border: none;
+      border-radius: 14px;
+      background: var(--accent);
+      color: #fff;
+      cursor: pointer;
+    }
+    .save:disabled { opacity: .6; }
+    #msg { text-align: center; margin-top: 14px; font-weight: 600; min-height: 22px; }
+    #msg.ok { color: var(--ok); }
+    #msg.err { color: var(--err); }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>🍲 Bubur Ayam Koki Gendut</h1>
+    <p>Daily sales</p>
+  </header>
+
+  <main>
+    <div class="card">
+      <div class="label">Date</div>
+      <input type="date" id="date">
+    </div>
+
+    <div class="card">
+      <div class="label">Branch</div>
+      <div class="branches" id="branches"></div>
+    </div>
+
+    <div class="card">
+      <div class="label">Jam buka</div>
+      <div class="two">
+        <div>
+          <div class="sub">Jam mulai</div>
+          <input type="time" id="jamMulai" value="06:30">
+        </div>
+        <div>
+          <div class="sub">Jam selesai</div>
+          <input type="time" id="jamSelesai" value="10:00">
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="label">Porsi</div>
+      <div class="item">
+        <div>
+          <div class="name">Bawa porsi</div>
+          <div class="hint">Brought out today</div>
+        </div>
+        <div class="stepper">
+          <button type="button" onclick="step('bawa', -1)">−</button>
+          <input type="number" id="bawa" min="0" value="0" inputmode="numeric">
+          <button type="button" onclick="step('bawa', 1)">+</button>
+        </div>
+      </div>
+      <div class="item">
+        <div>
+          <div class="name">Sisa porsi</div>
+          <button type="button" class="habis" id="habisBtn" onclick="toggleHabis()">Habis</button>
+        </div>
+        <div class="stepper">
+          <button type="button" onclick="step('sisa', -1)">−</button>
+          <input type="number" id="sisa" min="0" value="0" inputmode="numeric" oninput="syncHabis()">
+          <button type="button" onclick="step('sisa', 1)">+</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="label">Laku</div>
+      <div class="item">
+        <div>
+          <div class="name">Bubur Ayam Lengkap</div>
+          <div class="hint" id="priceLengkap"></div>
+        </div>
+        <div class="stepper">
+          <button type="button" onclick="step('lengkap', -1)">−</button>
+          <input type="number" id="lengkap" min="0" value="0" inputmode="numeric" oninput="update()">
+          <button type="button" onclick="step('lengkap', 1)">+</button>
+        </div>
+      </div>
+      <div class="item">
+        <div>
+          <div class="name">Bubur Saja</div>
+          <div class="hint" id="priceBubur"></div>
+        </div>
+        <div class="stepper">
+          <button type="button" onclick="step('bubur', -1)">−</button>
+          <input type="number" id="bubur" min="0" value="0" inputmode="numeric" oninput="update()">
+          <button type="button" onclick="step('bubur', 1)">+</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="label">Note</div>
+      <textarea id="note" placeholder="Optional, e.g. hujan, sakit, libur"></textarea>
+    </div>
+
+    <div class="card">
+      <div class="total">
+        <div class="label" style="margin:0">Total uang</div>
+        <div class="amount" id="total">Rp0</div>
+      </div>
+      <div class="breakdown" id="breakdown"></div>
+    </div>
+
+    <button class="save" id="saveBtn" onclick="save()">Save</button>
+    <div id="msg"></div>
+  </main>
+
+  <script>
+    // Keep these in sync with PRICES in Code.gs
+    const PRICES = {
+      Tengger: { lengkap: 17000, bubur: 9000 },
+      Darmo:   { lengkap: 19000, bubur: 11000 },
+      Benowo:  { lengkap: 17000, bubur: 9000 }
+    };
+    let branch = 'Tengger';
+
+    const $ = id => document.getElementById(id);
+    const rp = n => 'Rp' + Number(n).toLocaleString('id-ID');
+    const qty = id => Math.max(0, parseInt($(id).value, 10) || 0);
+
+    function renderBranches() {
+      const box = $('branches');
+      box.innerHTML = '';
+      Object.keys(PRICES).forEach(b => {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'branch' + (b === branch ? ' active' : '');
+        btn.innerHTML = b + '<small>' + rp(PRICES[b].lengkap) + '</small>';
+        btn.onclick = () => { branch = b; renderBranches(); update(); };
+        box.appendChild(btn);
+      });
+    }
+
+    function step(id, d) {
+      $(id).value = Math.max(0, qty(id) + d);
+      if (id === 'sisa') syncHabis();
+      update();
+    }
+
+    function toggleHabis() {
+      $('sisa').value = 0;
+      syncHabis();
+    }
+
+    function syncHabis() {
+      $('habisBtn').classList.toggle('on', qty('sisa') === 0);
+    }
+
+    function update() {
+      const p = PRICES[branch];
+      const l = qty('lengkap'), b = qty('bubur');
+      $('priceLengkap').textContent = rp(p.lengkap) + ' / porsi';
+      $('priceBubur').textContent = rp(p.bubur) + ' / porsi';
+      $('total').textContent = rp(l * p.lengkap + b * p.bubur);
+      $('breakdown').textContent =
+        l + ' × lengkap = ' + rp(l * p.lengkap) + '  ·  ' + b + ' × bubur = ' + rp(b * p.bubur);
+    }
+
+    function setMsg(text, cls) {
+      $('msg').textContent = text;
+      $('msg').className = cls || '';
+    }
+
+    function resetForm() {
+      ['bawa', 'sisa', 'lengkap', 'bubur'].forEach(id => $(id).value = 0);
+      $('note').value = '';
+      syncHabis();
+      update();
+    }
+
+    function save() {
+      const l = qty('lengkap'), b = qty('bubur');
+      if (l === 0 && b === 0 && !$('note').value.trim()) {
+        setMsg('Enter portions sold, or a note (e.g. libur).', 'err');
+        return;
+      }
+      if ($('jamMulai').value && $('jamSelesai').value && $('jamSelesai').value < $('jamMulai').value) {
+        setMsg('Jam selesai is before jam mulai.', 'err');
+        return;
+      }
+      const btn = $('saveBtn');
+      btn.disabled = true;
+      setMsg('Saving...');
+      google.script.run
+        .withSuccessHandler(total => {
+          btn.disabled = false;
+          setMsg('✓ Saved ' + branch + ': ' + rp(total), 'ok');
+          resetForm();
+        })
+        .withFailureHandler(e => {
+          btn.disabled = false;
+          setMsg('Error: ' + e.message, 'err');
+        })
+        .saveSale({
+          date: $('date').value,
+          branch: branch,
+          bawa: qty('bawa'),
+          jamMulai: $('jamMulai').value,
+          jamSelesai: $('jamSelesai').value,
+          sisa: qty('sisa'),
+          lengkap: l,
+          bubur: b,
+          note: $('note').value.trim()
+        });
+    }
+
+    $('date').valueAsDate = new Date();
+    renderBranches();
+    syncHabis();
+    update();
+  </script>
+</body>
+</html>
