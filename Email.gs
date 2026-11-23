@@ -8,13 +8,15 @@
 // - If there are no un-emailed rows, no email is sent.
 //
 // Setup:
-// 1. Put your email address below.
+// 1. Project Settings > Script Properties: add property EMAIL_REPORT,
+//    value = the address that should receive the report.
 // 2. Project Settings: time zone = (GMT+07:00) Jakarta.
 // 3. Run setupDailyEmail() ONCE and approve permissions.
 
-const REPORT_EMAIL = PropertiesService.getScriptProperties().getProperty('EMAIL_REPORT');
-
 function sendDailyReport() {
+  const to = String(PropertiesService.getScriptProperties().getProperty('EMAIL_REPORT') || '').trim();
+  if (!to) throw new Error('EMAIL_REPORT belum diatur di Script Properties.');
+
   const lock = LockService.getScriptLock();
   lock.waitLock(30000); // avoid clashing with a sale being saved
   try {
@@ -56,7 +58,7 @@ function sendDailyReport() {
     if (dates.length === 0) return; // nothing new -> no email
 
     dates.forEach(d => {
-      sendEmailForDate(d, byDate[d].entries, ss.getUrl());
+      sendEmailForDate(to, d, byDate[d].entries, ss.getUrl());
       const stamp = Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd HH:mm');
       byDate[d].rows.forEach(rowNum => sh.getRange(rowNum, COL('Emailed at')).setValue(stamp));
     });
@@ -65,7 +67,7 @@ function sendDailyReport() {
   }
 }
 
-function sendEmailForDate(date, entries, sheetUrl) {
+function sendEmailForDate(to, date, entries, sheetUrl) {
   const rp = n => 'Rp' + Number(n).toLocaleString('id-ID');
   const branches = Object.keys(getPrices());
   // Include any branch name found in the data that isn't in the price list
@@ -106,7 +108,7 @@ function sendEmailForDate(date, entries, sheetUrl) {
     '<p><a href="' + sheetUrl + '">Open the full sheet</a></p></div>';
 
   MailApp.sendEmail({
-    to: REPORT_EMAIL,
+    to: to,
     subject: 'Koki Gendut sales ' + date + ': ' + rp(gT),
     htmlBody: html
   });
