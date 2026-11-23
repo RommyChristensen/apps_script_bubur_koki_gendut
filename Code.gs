@@ -204,3 +204,67 @@ function saveSale(data) {
   }
   return total;
 }
+
+// ----- Laporan: sales between two dates (inclusive), 'yyyy-MM-dd' -----
+// Returns plain values only (google.script.run can't send Date objects).
+function getSales(from, to) {
+  const isDay = s => /^\d{4}-\d{2}-\d{2}$/.test(String(s));
+  if (!isDay(from) || !isDay(to)) throw new Error('Tanggal tidak valid.');
+  if (from > to) { const t = from; from = to; to = t; }
+
+  const tz = Session.getScriptTimeZone();
+  const day = x => x instanceof Date ? Utilities.formatDate(x, tz, 'yyyy-MM-dd') : String(x || '').trim();
+  const stamp = x => x instanceof Date ? Utilities.formatDate(x, tz, 'yyyy-MM-dd HH:mm:ss') : String(x || '');
+  const time = x => x instanceof Date ? Utilities.formatDate(x, tz, 'HH:mm') : String(x || '');
+  const num = x => Number(x) || 0;
+  const inRange = d => d >= from && d <= to;
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+
+  // Add-ons, keyed by date | branch | saved at (the same values saveSale wrote to both sheets)
+  const addonsByKey = {};
+  const ash = ss.getSheetByName(ADDON_SHEET_NAME);
+  if (ash && ash.getLastRow() > 1) {
+    ash.getRange(2, 1, ash.getLastRow() - 1, ADDON_HEADERS.length).getValues().forEach(r => {
+      const d = day(r[0]);
+      if (!inRange(d)) return;
+      const key = d + '|' + r[1] + '|' + stamp(r[9]);
+      (addonsByKey[key] = addonsByKey[key] || []).push({
+        name: String(r[2]), qty: num(r[3]), jual: num(r[4]), modal: num(r[5]),
+        subtotal: num(r[6]), untung: num(r[8])
+      });
+    });
+  }
+
+  const entries = [];
+  const sh = ss.getSheetByName(SHEET_NAME);
+  if (sh && sh.getLastRow() > 1) {
+    ensureHeaders(sh, HEADERS);
+    const v = (r, name) => r[COL(name) - 1];
+    sh.getRange(2, 1, sh.getLastRow() - 1, HEADERS.length).getValues().forEach(r => {
+      const d = day(v(r, 'Date'));
+      if (!d || !inRange(d)) return;
+      const branch = String(v(r, 'Branch'));
+      const saved = stamp(v(r, 'Saved at'));
+      entries.push({
+        date: d,
+        branch: branch,
+        bawa: num(v(r, 'Bawa Porsi')),
+        mulai: time(v(r, 'Jam Mulai')),
+        selesai: time(v(r, 'Jam Selesai')),
+        sisa: num(v(r, 'Sisa Porsi')),
+        lengkap: num(v(r, 'Laku Lengkap')),
+        bubur: num(v(r, 'Laku Bubur Saja')),
+        revL: num(v(r, 'Revenue Lengkap')),
+        revB: num(v(r, 'Revenue Bubur')),
+        revAddon: num(v(r, 'Revenue Add On')),
+        modalAddon: num(v(r, 'Modal Add On')),
+        total: num(v(r, 'Total Uang')),
+        note: String(v(r, 'Note') || ''),
+        savedAt: saved,
+        addons: addonsByKey[d + '|' + branch + '|' + saved] || []
+      });
+    });
+  }
+  entries.sort((a, b) => a.date < b.date ? -1 : a.date > b.date ? 1 : (a.savedAt < b.savedAt ? -1 : 1));
+  return { from: from, to: to, entries: entries };
+}

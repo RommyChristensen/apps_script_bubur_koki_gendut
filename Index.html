@@ -60,6 +60,7 @@
     }
     textarea { resize: vertical; min-height: 60px; }
     .two { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .two > div { min-width: 0; }
     .two .sub { font-size: 13px; color: var(--muted); margin-bottom: 4px; }
     .branches { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
     .branch {
@@ -195,6 +196,40 @@
     .price-nums { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 8px; }
     .price-nums .sub { font-size: 12px; color: var(--muted); margin-bottom: 4px; }
     .hint-text { font-size: 13px; color: var(--muted); margin: 0 0 12px; }
+    .quick { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+    .quick button {
+      padding: 7px 12px;
+      border: 1.5px solid var(--line);
+      border-radius: 18px;
+      background: #fff;
+      color: var(--text);
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .quick button.active { background: var(--soft); border-color: var(--accent); color: var(--accent-dark); }
+    .stats { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 12px; }
+    .stat { background: var(--bg); border-radius: 10px; padding: 8px 10px; }
+    .stat .k { font-size: 12px; color: var(--muted); }
+    .stat .v { font-size: 16px; font-weight: 700; margin-top: 2px; }
+    table.rtable { width: 100%; border-collapse: collapse; font-size: 14px; }
+    .rtable th { font-size: 12px; color: var(--muted); font-weight: 600; text-align: right; padding: 6px 4px; }
+    .rtable th:first-child, .rtable td:first-child { text-align: left; }
+    .rtable td { text-align: right; padding: 8px 4px; border-top: 1px solid var(--line); font-variant-numeric: tabular-nums; }
+    .day-head { display: flex; justify-content: space-between; align-items: baseline; margin: 18px 4px 8px; }
+    .day-head .d { font-weight: 700; }
+    .day-head .t { font-weight: 700; color: var(--accent-dark); }
+    .entry-top { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+    .entry-top .b { font-weight: 700; font-size: 16px; }
+    .entry-top .amt { font-weight: 800; color: var(--accent-dark); white-space: nowrap; }
+    .entry .meta { font-size: 13px; color: var(--muted); margin-top: 4px; }
+    .entry .line { display: flex; justify-content: space-between; gap: 8px; font-size: 14px; margin-top: 6px; }
+    .entry .line span:last-child { white-space: nowrap; font-variant-numeric: tabular-nums; }
+    .entry .ao { color: var(--muted); }
+    .entry .note { font-size: 13px; color: var(--muted); margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--line); }
+    .empty { text-align: center; color: var(--muted); padding: 24px 0; }
+    #rmsg { text-align: center; margin-top: 14px; font-weight: 600; min-height: 22px; }
+    #rmsg.err { color: var(--err); }
     #pmsg { text-align: center; margin-top: 14px; font-weight: 600; min-height: 22px; }
     #pmsg.ok { color: var(--ok); }
     #pmsg.err { color: var(--err); }
@@ -209,6 +244,7 @@
     <p>Daily sales</p>
     <div class="tabs">
       <button type="button" id="tabSales" class="active" onclick="showView('sales')">Penjualan</button>
+      <button type="button" id="tabReport" onclick="showView('report')">Laporan</button>
       <button type="button" id="tabMaster" onclick="showView('master')">Harga</button>
     </div>
   </header>
@@ -312,6 +348,30 @@
 
     <button class="save" id="saveBtn" onclick="save()">Save</button>
     <div id="msg"></div>
+  </main>
+
+  <main id="reportView" hidden>
+    <div class="card">
+      <div class="label">Periode</div>
+      <div class="two">
+        <div>
+          <div class="sub">Dari</div>
+          <input type="date" id="rFrom" onchange="loadReport()">
+        </div>
+        <div>
+          <div class="sub">Sampai</div>
+          <input type="date" id="rTo" onchange="loadReport()">
+        </div>
+      </div>
+      <div class="quick" id="quick">
+        <button type="button" data-q="today">Hari ini</button>
+        <button type="button" data-q="yesterday">Kemarin</button>
+        <button type="button" data-q="7">7 hari</button>
+        <button type="button" data-q="month">Bulan ini</button>
+      </div>
+    </div>
+    <div id="rmsg"></div>
+    <div id="report"></div>
   </main>
 
   <main id="masterView" hidden>
@@ -499,6 +559,132 @@
         });
     }
 
+    // ----- Laporan -----
+    // Local yyyy-MM-dd (valueAsDate would use UTC, i.e. yesterday before 07:00 WIB)
+    function ymd(d) {
+      const p = n => String(n).padStart(2, '0');
+      return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate());
+    }
+    const esc = t => String(t).replace(/[&<>"']/g, c =>
+      ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+    const prettyDate = d => new Date(d + 'T00:00:00')
+      .toLocaleDateString('id-ID', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
+
+    function setRange(q) {
+      const now = new Date();
+      let from = new Date(now), to = new Date(now);
+      if (q === 'yesterday') { from.setDate(now.getDate() - 1); to = new Date(from); }
+      if (q === '7') from.setDate(now.getDate() - 6);
+      if (q === 'month') from = new Date(now.getFullYear(), now.getMonth(), 1);
+      $('rFrom').value = ymd(from);
+      $('rTo').value = ymd(to);
+      loadReport(q);
+    }
+
+    let reportReq = 0;
+    function loadReport(q) {
+      document.querySelectorAll('#quick button').forEach(b => b.classList.toggle('active', b.dataset.q === q));
+      const from = $('rFrom').value, to = $('rTo').value;
+      if (!from || !to) return;
+      const req = ++reportReq; // ignore answers to older requests
+      $('rmsg').className = '';
+      $('rmsg').textContent = 'Memuat...';
+      google.script.run
+        .withSuccessHandler(res => {
+          if (req !== reportReq) return;
+          $('rmsg').textContent = '';
+          renderReport(res);
+        })
+        .withFailureHandler(e => {
+          if (req !== reportReq) return;
+          $('rmsg').className = 'err';
+          $('rmsg').textContent = 'Error: ' + e.message;
+        })
+        .getSales(from, to);
+    }
+
+    function renderReport(res) {
+      const list = res.entries;
+      if (!list.length) {
+        $('report').innerHTML = '<div class="card empty">Belum ada penjualan di periode ini.</div>';
+        return;
+      }
+      const sum = (arr, f) => arr.reduce((s, e) => s + f(e), 0);
+      const total = sum(list, e => e.total);
+      const addonRev = sum(list, e => e.revAddon);
+      const addonUntung = sum(list, e => e.revAddon - e.modalAddon);
+      const range = res.from === res.to ? prettyDate(res.from) : prettyDate(res.from) + ' – ' + prettyDate(res.to);
+
+      let html =
+        '<div class="card">' +
+          '<div class="total"><div class="label" style="margin:0">Total uang</div>' +
+          '<div class="amount">' + rp(total) + '</div></div>' +
+          '<div class="breakdown">' + esc(range) + ' · ' + list.length + ' input</div>' +
+          '<div class="stats">' +
+            '<div class="stat"><div class="k">Laku lengkap</div><div class="v">' + sum(list, e => e.lengkap) + ' porsi</div></div>' +
+            '<div class="stat"><div class="k">Laku bubur saja</div><div class="v">' + sum(list, e => e.bubur) + ' porsi</div></div>' +
+            '<div class="stat"><div class="k">Add on</div><div class="v">' + rp(addonRev) + '</div></div>' +
+            '<div class="stat"><div class="k">Untung add on</div><div class="v">' + rp(addonUntung) + '</div></div>' +
+          '</div>' +
+        '</div>';
+
+      // Per branch
+      const byBranch = {};
+      list.forEach(e => {
+        const b = byBranch[e.branch] = byBranch[e.branch] || { l: 0, bu: 0, a: 0, t: 0 };
+        b.l += e.lengkap; b.bu += e.bubur; b.a += e.revAddon; b.t += e.total;
+      });
+      html += '<div class="card"><div class="label">Per cabang</div><table class="rtable">' +
+        '<tr><th>Cabang</th><th>Lengkap</th><th>Bubur</th><th>Total</th></tr>' +
+        Object.keys(byBranch).map(b =>
+          '<tr><td>' + esc(b) + '</td><td>' + byBranch[b].l + '</td><td>' + byBranch[b].bu + '</td><td>' +
+          rp(byBranch[b].t) + '</td></tr>').join('') +
+        '</table></div>';
+
+      // Add-ons by name
+      const byAddon = {};
+      list.forEach(e => e.addons.forEach(a => {
+        const x = byAddon[a.name] = byAddon[a.name] || { q: 0, s: 0, u: 0 };
+        x.q += a.qty; x.s += a.subtotal; x.u += a.untung;
+      }));
+      if (Object.keys(byAddon).length) {
+        html += '<div class="card"><div class="label">Add on</div><table class="rtable">' +
+          '<tr><th>Nama</th><th>Laku</th><th>Subtotal</th><th>Untung</th></tr>' +
+          Object.keys(byAddon).map(n =>
+            '<tr><td>' + esc(n) + '</td><td>' + byAddon[n].q + '</td><td>' + rp(byAddon[n].s) +
+            '</td><td>' + rp(byAddon[n].u) + '</td></tr>').join('') +
+          '</table></div>';
+      }
+
+      // Every input, grouped by day
+      const days = [];
+      list.forEach(e => {
+        if (!days.length || days[days.length - 1].date !== e.date) days.push({ date: e.date, items: [] });
+        days[days.length - 1].items.push(e);
+      });
+      days.forEach(d => {
+        html += '<div class="day-head"><span class="d">' + esc(prettyDate(d.date)) + '</span>' +
+          '<span class="t">' + rp(sum(d.items, e => e.total)) + '</span></div>';
+        d.items.forEach(e => {
+          html += '<div class="card entry">' +
+            '<div class="entry-top"><span class="b">' + esc(e.branch) + '</span><span class="amt">' + rp(e.total) + '</span></div>' +
+            '<div class="meta">' +
+              (e.mulai || e.selesai ? esc(e.mulai) + '–' + esc(e.selesai) + ' · ' : '') +
+              'Bawa ' + e.bawa + ' · Sisa ' + (e.sisa === 0 ? 'Habis' : e.sisa) +
+            '</div>' +
+            '<div class="line"><span>' + e.lengkap + ' × lengkap</span><span>' + rp(e.revL) + '</span></div>' +
+            '<div class="line"><span>' + e.bubur + ' × bubur saja</span><span>' + rp(e.revB) + '</span></div>' +
+            e.addons.map(a =>
+              '<div class="line ao"><span>' + a.qty + ' × ' + esc(a.name) + '</span><span>' + rp(a.subtotal) + '</span></div>').join('') +
+            (e.note ? '<div class="note">📝 ' + esc(e.note) + '</div>' : '') +
+          '</div>';
+        });
+      });
+      $('report').innerHTML = html;
+    }
+
+    document.querySelectorAll('#quick button').forEach(b => b.onclick = () => setRange(b.dataset.q));
+
     // ----- Master harga -----
     function setPrices(p) {
       PRICES = p || {};
@@ -546,10 +732,15 @@
 
     function showView(name) {
       $('salesView').hidden = name !== 'sales';
+      $('reportView').hidden = name !== 'report';
       $('masterView').hidden = name !== 'master';
       $('tabSales').classList.toggle('active', name === 'sales');
+      $('tabReport').classList.toggle('active', name === 'report');
       $('tabMaster').classList.toggle('active', name === 'master');
       if (name === 'master') { setPMsg(''); showPriceEditor(); }
+      if (name === 'report') {
+        if (!$('rFrom').value) setRange('today'); else loadReport();
+      }
     }
 
     // existing = true: branch name is fixed (renaming would split its sales history)
@@ -618,7 +809,7 @@
         .savePrices(list, pin);
     }
 
-    $('date').valueAsDate = new Date();
+    $('date').value = ymd(new Date());
     renderBranches();
     syncHabis();
     update();
