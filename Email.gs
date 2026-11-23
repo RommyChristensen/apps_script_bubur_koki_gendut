@@ -1,5 +1,5 @@
 // ===== Daily sales email for Bubur Ayam Koki Gendut =====
-// Uses SHEET_NAME, HEADERS, COL() and PRICES from Code.gs.
+// Uses SHEET_NAME, HEADERS, COL(), ensureHeaders() and getPrices() from Code.gs.
 //
 // How it works:
 // - Runs every night around 11:59 p.m.
@@ -67,8 +67,8 @@ function sendDailyReport() {
 
 function sendEmailForDate(date, entries, sheetUrl) {
   const rp = n => 'Rp' + Number(n).toLocaleString('id-ID');
-  const branches = Object.keys(PRICES);
-  // Include any branch name found in the data that isn't in PRICES
+  const branches = Object.keys(getPrices());
+  // Include any branch name found in the data that isn't in the price list
   entries.forEach(e => { if (branches.indexOf(e.branch) === -1) branches.push(e.branch); });
 
   let gL = 0, gB = 0, gA = 0, gT = 0;

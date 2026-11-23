@@ -179,6 +179,25 @@
       cursor: pointer;
     }
     .save:disabled { opacity: .6; }
+    .tabs { display: inline-flex; gap: 4px; margin-top: 12px; padding: 4px; background: rgba(255,255,255,.2); border-radius: 22px; }
+    .tabs button {
+      padding: 7px 18px;
+      border: none;
+      border-radius: 18px;
+      background: transparent;
+      color: #fff;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .tabs button.active { background: #fff; color: var(--accent-dark); }
+    .price-row .bname { flex: 1; font-weight: 700; font-size: 16px; padding: 10px 2px; }
+    .price-nums { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 8px; }
+    .price-nums .sub { font-size: 12px; color: var(--muted); margin-bottom: 4px; }
+    .hint-text { font-size: 13px; color: var(--muted); margin: 0 0 12px; }
+    #pmsg { text-align: center; margin-top: 14px; font-weight: 600; min-height: 22px; }
+    #pmsg.ok { color: var(--ok); }
+    #pmsg.err { color: var(--err); }
     #msg { text-align: center; margin-top: 14px; font-weight: 600; min-height: 22px; }
     #msg.ok { color: var(--ok); }
     #msg.err { color: var(--err); }
@@ -188,9 +207,13 @@
   <header>
     <h1>🍲 Bubur Ayam Koki Gendut</h1>
     <p>Daily sales</p>
+    <div class="tabs">
+      <button type="button" id="tabSales" class="active" onclick="showView('sales')">Penjualan</button>
+      <button type="button" id="tabMaster" onclick="showView('master')">Harga</button>
+    </div>
   </header>
 
-  <main>
+  <main id="salesView">
     <div class="card">
       <div class="label">Date</div>
       <input type="date" id="date">
@@ -291,14 +314,21 @@
     <div id="msg"></div>
   </main>
 
+  <main id="masterView" hidden>
+    <div class="card">
+      <div class="label">Harga per porsi</div>
+      <p class="hint-text">Harga baru dipakai untuk penjualan berikutnya. Data lama tidak berubah.</p>
+      <div id="priceRows"></div>
+      <button type="button" class="add-btn" onclick="addPriceRow()">+ Tambah cabang</button>
+    </div>
+    <button class="save" id="savePricesBtn" onclick="savePrices()">Simpan harga</button>
+    <div id="pmsg"></div>
+  </main>
+
   <script>
-    // Keep these in sync with PRICES in Code.gs
-    const PRICES = {
-      Tengger: { lengkap: 17000, bubur: 9000 },
-      Darmo:   { lengkap: 19000, bubur: 11000 },
-      Benowo:  { lengkap: 17000, bubur: 9000 }
-    };
-    let branch = 'Tengger';
+    // Prices come from the 'Master Harga' sheet (see loadPrices)
+    let PRICES = {};
+    let branch = null;
 
     const $ = id => document.getElementById(id);
     const rp = n => 'Rp' + Number(n).toLocaleString('id-ID');
@@ -307,6 +337,10 @@
     function renderBranches() {
       const box = $('branches');
       box.innerHTML = '';
+      if (!Object.keys(PRICES).length) {
+        box.innerHTML = '<div class="hint-text" style="grid-column:1/-1;margin:0">Memuat harga...</div>';
+        return;
+      }
       Object.keys(PRICES).forEach(b => {
         const btn = document.createElement('button');
         btn.type = 'button';
@@ -369,7 +403,7 @@
     }
 
     function update() {
-      const p = PRICES[branch];
+      const p = PRICES[branch] || { lengkap: 0, bubur: 0 };
       const l = qty('lengkap'), b = qty('bubur');
       $('priceLengkap').textContent = rp(p.lengkap) + ' / porsi';
       $('priceBubur').textContent = rp(p.bubur) + ' / porsi';
@@ -408,6 +442,10 @@
     }
 
     function save() {
+      if (!PRICES[branch]) {
+        setMsg('Harga belum dimuat. Coba lagi.', 'err');
+        return;
+      }
       const l = qty('lengkap'), b = qty('bubur');
       const addons = readAddons();
       const unnamed = addons.find(a => !a.name);
@@ -451,10 +489,99 @@
         });
     }
 
+    // ----- Master harga -----
+    function setPrices(p) {
+      PRICES = p || {};
+      if (!PRICES[branch]) branch = Object.keys(PRICES)[0] || null;
+      renderBranches();
+      update();
+    }
+
+    function loadPrices() {
+      google.script.run
+        .withSuccessHandler(setPrices)
+        .withFailureHandler(e => setMsg('Gagal memuat harga: ' + e.message, 'err'))
+        .getPrices();
+    }
+
+    function showView(name) {
+      $('salesView').hidden = name !== 'sales';
+      $('masterView').hidden = name !== 'master';
+      $('tabSales').classList.toggle('active', name === 'sales');
+      $('tabMaster').classList.toggle('active', name === 'master');
+      if (name === 'master') { renderPriceRows(); $('pmsg').textContent = ''; }
+    }
+
+    // existing = true: branch name is fixed (renaming would split its sales history)
+    function priceRow(name, lengkap, bubur, existing) {
+      const row = document.createElement('div');
+      row.className = 'addon price-row';
+      row.innerHTML =
+        '<div class="addon-top">' +
+          (existing ? '<div class="bname"></div>'
+                    : '<input type="text" class="p-name" placeholder="Nama cabang">') +
+          '<button type="button" class="addon-remove" title="Hapus">×</button>' +
+        '</div>' +
+        '<div class="price-nums">' +
+          '<div><div class="sub">Lengkap</div><input type="number" class="p-lengkap" min="0" inputmode="numeric"></div>' +
+          '<div><div class="sub">Bubur saja</div><input type="number" class="p-bubur" min="0" inputmode="numeric"></div>' +
+        '</div>';
+      if (existing) { row.querySelector('.bname').textContent = name; row.dataset.name = name; }
+      row.querySelector('.p-lengkap').value = lengkap || '';
+      row.querySelector('.p-bubur').value = bubur || '';
+      row.querySelector('.addon-remove').onclick = () => row.remove();
+      $('priceRows').appendChild(row);
+      return row;
+    }
+
+    function renderPriceRows() {
+      $('priceRows').innerHTML = '';
+      Object.keys(PRICES).forEach(b => priceRow(b, PRICES[b].lengkap, PRICES[b].bubur, true));
+    }
+
+    function addPriceRow() {
+      priceRow('', '', '', false).querySelector('.p-name').focus();
+    }
+
+    function setPMsg(text, cls) {
+      $('pmsg').textContent = text;
+      $('pmsg').className = cls || '';
+    }
+
+    function savePrices() {
+      const list = Array.from($('priceRows').children).map(row => ({
+        branch: row.dataset.name || row.querySelector('.p-name').value.trim(),
+        lengkap: Number(row.querySelector('.p-lengkap').value) || 0,
+        bubur: Number(row.querySelector('.p-bubur').value) || 0
+      }));
+      if (!list.length) return setPMsg('Minimal 1 cabang.', 'err');
+      if (list.some(x => !x.branch)) return setPMsg('Isi nama cabang.', 'err');
+      if (list.some(x => x.lengkap <= 0 || x.bubur <= 0)) return setPMsg('Semua harga harus lebih dari 0.', 'err');
+      const names = list.map(x => x.branch.toLowerCase());
+      if (names.some((n, i) => names.indexOf(n) !== i)) return setPMsg('Ada nama cabang yang dobel.', 'err');
+
+      const btn = $('savePricesBtn');
+      btn.disabled = true;
+      setPMsg('Menyimpan...');
+      google.script.run
+        .withSuccessHandler(p => {
+          btn.disabled = false;
+          setPrices(p);
+          renderPriceRows();
+          setPMsg('✓ Harga tersimpan', 'ok');
+        })
+        .withFailureHandler(e => {
+          btn.disabled = false;
+          setPMsg('Error: ' + e.message, 'err');
+        })
+        .savePrices(list);
+    }
+
     $('date').valueAsDate = new Date();
     renderBranches();
     syncHabis();
     update();
+    loadPrices();
   </script>
 </body>
 </html>
