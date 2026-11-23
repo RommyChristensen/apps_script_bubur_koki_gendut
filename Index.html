@@ -48,7 +48,7 @@
       letter-spacing: .6px;
       margin-bottom: 10px;
     }
-    input[type=date], input[type=time], textarea {
+    input[type=date], input[type=time], textarea, #pin {
       width: 100%;
       padding: 12px;
       font-size: 16px;
@@ -315,6 +315,15 @@
   </main>
 
   <main id="masterView" hidden>
+    <div class="card" id="pinCard">
+      <div class="label">PIN</div>
+      <p class="hint-text">Masukkan PIN untuk mengubah harga.</p>
+      <input type="password" id="pin" inputmode="numeric" autocomplete="off"
+             onkeydown="if (event.key === 'Enter') unlock()">
+      <button class="save" id="unlockBtn" style="margin-top:12px" onclick="unlock()">Buka</button>
+    </div>
+
+    <div id="priceEditor" hidden>
     <div class="card">
       <div class="label">Harga per porsi</div>
       <p class="hint-text">Harga baru dipakai untuk penjualan berikutnya. Data lama tidak berubah.</p>
@@ -322,6 +331,7 @@
       <button type="button" class="add-btn" onclick="addPriceRow()">+ Tambah cabang</button>
     </div>
     <button class="save" id="savePricesBtn" onclick="savePrices()">Simpan harga</button>
+    </div>
     <div id="pmsg"></div>
   </main>
 
@@ -504,12 +514,42 @@
         .getPrices();
     }
 
+    // PIN is kept only in memory: reloading the app locks the Harga tab again
+    let pin = null;
+
+    function showPriceEditor() {
+      $('pinCard').hidden = !!pin;
+      $('priceEditor').hidden = !pin;
+      if (pin) renderPriceRows(); else { $('pin').value = ''; $('pin').focus(); }
+    }
+
+    function unlock() {
+      const entered = $('pin').value.trim();
+      if (!entered) return setPMsg('Masukkan PIN.', 'err');
+      const btn = $('unlockBtn');
+      btn.disabled = true;
+      setPMsg('Memeriksa...');
+      google.script.run
+        .withSuccessHandler(() => {
+          btn.disabled = false;
+          pin = entered;
+          setPMsg('');
+          showPriceEditor();
+        })
+        .withFailureHandler(e => {
+          btn.disabled = false;
+          $('pin').value = '';
+          setPMsg(e.message, 'err');
+        })
+        .verifyPin(entered);
+    }
+
     function showView(name) {
       $('salesView').hidden = name !== 'sales';
       $('masterView').hidden = name !== 'master';
       $('tabSales').classList.toggle('active', name === 'sales');
       $('tabMaster').classList.toggle('active', name === 'master');
-      if (name === 'master') { renderPriceRows(); $('pmsg').textContent = ''; }
+      if (name === 'master') { setPMsg(''); showPriceEditor(); }
     }
 
     // existing = true: branch name is fixed (renaming would split its sales history)
@@ -572,9 +612,10 @@
         })
         .withFailureHandler(e => {
           btn.disabled = false;
+          if (/PIN/.test(e.message)) { pin = null; showPriceEditor(); }
           setPMsg('Error: ' + e.message, 'err');
         })
-        .savePrices(list);
+        .savePrices(list, pin);
     }
 
     $('date').valueAsDate = new Date();

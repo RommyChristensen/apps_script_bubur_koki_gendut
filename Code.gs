@@ -100,8 +100,31 @@ function getPrices() {
   return prices;
 }
 
+// ----- PIN for the Harga tab -----
+// Set it in Project Settings > Script Properties: property PRICE_PIN, value e.g. 4821.
+// After 5 wrong tries, PIN checks are blocked for 10 minutes.
+function checkPin_(pin) {
+  const real = String(PropertiesService.getScriptProperties().getProperty('PRICE_PIN') || '').trim();
+  if (!real) throw new Error('PIN belum diatur. Tambahkan PRICE_PIN di Script Properties.');
+  const cache = CacheService.getScriptCache();
+  const fails = Number(cache.get('pinFails')) || 0;
+  if (fails >= 5) throw new Error('Terlalu banyak PIN salah. Coba lagi 10 menit lagi.');
+  if (String(pin || '').trim() !== real) {
+    cache.put('pinFails', String(fails + 1), 600);
+    throw new Error('PIN salah.');
+  }
+  cache.remove('pinFails');
+}
+
+// Called by the app to unlock the Harga tab
+function verifyPin(pin) {
+  checkPin_(pin);
+  return true;
+}
+
 // Replace the price list. list = [{ branch, lengkap, bubur }, ...]
-function savePrices(list) {
+function savePrices(list, pin) {
+  checkPin_(pin);
   if (!Array.isArray(list) || list.length === 0) throw new Error('Minimal 1 cabang.');
   const seen = {};
   const now = new Date();
