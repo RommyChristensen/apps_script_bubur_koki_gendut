@@ -49,6 +49,7 @@ function sendDailyReport() {
         lengkap: Number(v(r, 'Laku Lengkap')) || 0,
         bubur: Number(v(r, 'Laku Bubur Saja')) || 0,
         addon: Number(v(r, 'Revenue Add On')) || 0,
+        custom: Number(v(r, 'Revenue Custom Menu')) || 0,
         total: Number(v(r, 'Total Uang')) || 0,
         note: v(r, 'Note')
       });
@@ -73,14 +74,14 @@ function sendEmailForDate(to, date, entries, sheetUrl) {
   // Include any branch name found in the data that isn't in the price list
   entries.forEach(e => { if (branches.indexOf(e.branch) === -1) branches.push(e.branch); });
 
-  let gL = 0, gB = 0, gA = 0, gT = 0;
+  let gL = 0, gB = 0, gA = 0, gC = 0, gT = 0;
   const rowsHtml = branches.map(b => {
     const list = entries.filter(e => e.branch === b);
     if (list.length === 0) {
-      return '<tr style="color:#b8a596"><td>' + b + '</td><td colspan="7">no entry</td></tr>';
+      return '<tr style="color:#b8a596"><td>' + b + '</td><td colspan="8">no entry</td></tr>';
     }
     return list.map(e => {
-      gL += e.lengkap; gB += e.bubur; gA += e.addon; gT += e.total;
+      gL += e.lengkap; gB += e.bubur; gA += e.addon; gC += e.custom; gT += e.total;
       return '<tr><td>' + b + '</td>' +
         '<td align="center">' + e.mulai + '–' + e.selesai + '</td>' +
         '<td align="center">' + e.bawa + '</td>' +
@@ -88,8 +89,9 @@ function sendEmailForDate(to, date, entries, sheetUrl) {
         '<td align="center">' + e.lengkap + '</td>' +
         '<td align="center">' + e.bubur + '</td>' +
         '<td align="right">' + (e.addon ? rp(e.addon) : '–') + '</td>' +
+        '<td align="right">' + (e.custom ? rp(e.custom) : '–') + '</td>' +
         '<td align="right">' + rp(e.total) + '</td></tr>' +
-        (e.note ? '<tr><td></td><td colspan="7" style="color:#8a7462;font-size:13px">📝 ' + e.note + '</td></tr>' : '');
+        (e.note ? '<tr><td></td><td colspan="8" style="color:#8a7462;font-size:13px">📝 ' + e.note + '</td></tr>' : '');
     }).join('');
   }).join('');
 
@@ -98,11 +100,12 @@ function sendEmailForDate(to, date, entries, sheetUrl) {
     '<h2 style="color:#e8792b">🍲 Bubur Ayam Koki Gendut – ' + date + '</h2>' +
     '<table cellpadding="7" style="border-collapse:collapse;border:1px solid #f0e2d2;font-size:14px">' +
     '<tr style="background:#fde8d6"><th align="left">Cabang</th><th>Jam</th><th>Bawa</th><th>Sisa</th>' +
-    '<th>Lengkap</th><th>Bubur</th><th align="right">Add on</th><th align="right">Total</th></tr>' +
+    '<th>Lengkap</th><th>Bubur</th><th align="right">Add on</th><th align="right">Menu custom</th><th align="right">Total</th></tr>' +
     rowsHtml +
     '<tr style="font-weight:bold;background:#fff8ef"><td>Total</td><td></td><td></td><td></td>' +
     '<td align="center">' + gL + '</td><td align="center">' + gB + '</td>' +
     '<td align="right">' + rp(gA) + '</td>' +
+    '<td align="right">' + rp(gC) + '</td>' +
     '<td align="right">' + rp(gT) + '</td></tr>' +
     '</table>' +
     '<p><a href="' + sheetUrl + '">Open the full sheet</a></p></div>';

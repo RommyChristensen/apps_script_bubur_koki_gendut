@@ -334,6 +334,13 @@
     </div>
 
     <div class="card">
+      <div class="label">Menu custom</div>
+      <div id="customs"></div>
+      <button type="button" class="add-btn" onclick="addCustom()">+ Tambah menu</button>
+      <div class="addon-total" id="customTotal"></div>
+    </div>
+
+    <div class="card">
       <div class="label">Note</div>
       <textarea id="note" placeholder="Optional, e.g. hujan, sakit, libur"></textarea>
     </div>
@@ -474,6 +481,33 @@
       })).filter(a => a.name || a.qty || a.jual || a.modal);
     }
 
+    // ----- Menu custom: free-text name + price -----
+    function addCustom() {
+      const row = document.createElement('div');
+      row.className = 'addon';
+      row.innerHTML =
+        '<div class="addon-top">' +
+          '<input type="text" class="c-name" placeholder="Nama menu, e.g. nasi kuning">' +
+          '<button type="button" class="addon-remove" title="Hapus">×</button>' +
+        '</div>' +
+        '<div style="margin-top:8px"><div class="sub" style="font-size:12px;color:var(--muted);margin-bottom:4px">Harga</div>' +
+          '<input type="number" class="c-harga" min="0" inputmode="numeric" placeholder="0"></div>';
+      row.querySelector('.addon-remove').onclick = () => { row.remove(); update(); };
+      row.querySelectorAll('input').forEach(i => i.oninput = update);
+      $('customs').appendChild(row);
+      update();
+      row.querySelector('.c-name').focus();
+    }
+
+    // All custom rows from the screen, skipping rows left completely empty
+    function readCustoms() {
+      return Array.from($('customs').children).map(row => ({
+        row: row,
+        name: row.querySelector('.c-name').value.trim(),
+        harga: num(row.querySelector('.c-harga'))
+      })).filter(c => c.name || c.harga);
+    }
+
     function update() {
       const p = PRICES[branch] || { lengkap: 0, bubur: 0 };
       const l = qty('lengkap'), b = qty('bubur');
@@ -494,10 +528,15 @@
       $('addonTotal').innerHTML = $('addons').children.length
         ? '<span>Total add on</span><span>' + rp(addonSum) + '</span>' : '';
 
-      $('total').textContent = rp(l * p.lengkap + b * p.bubur + addonSum);
+      const customSum = readCustoms().reduce((s, c) => s + c.harga, 0);
+      $('customTotal').innerHTML = $('customs').children.length
+        ? '<span>Total menu custom</span><span>' + rp(customSum) + '</span>' : '';
+
+      $('total').textContent = rp(l * p.lengkap + b * p.bubur + addonSum + customSum);
       $('breakdown').textContent =
         l + ' × lengkap = ' + rp(l * p.lengkap) + '  ·  ' + b + ' × bubur = ' + rp(b * p.bubur) +
-        (addonSum ? '  ·  add on = ' + rp(addonSum) : '');
+        (addonSum ? '  ·  add on = ' + rp(addonSum) : '') +
+        (customSum ? '  ·  menu custom = ' + rp(customSum) : '');
     }
 
     function setMsg(text, cls) {
@@ -509,6 +548,7 @@
       ['bawa', 'sisa', 'lengkap', 'bubur'].forEach(id => $(id).value = 0);
       $('note').value = '';
       $('addons').innerHTML = '';
+      $('customs').innerHTML = '';
       syncHabis();
       update();
     }
@@ -526,7 +566,14 @@
         setMsg('Isi nama add on.', 'err');
         return;
       }
-      if (l === 0 && b === 0 && addons.every(a => a.qty === 0) && !$('note').value.trim()) {
+      const customs = readCustoms();
+      const badCustom = customs.find(c => !c.name || !c.harga);
+      if (badCustom) {
+        badCustom.row.querySelector(badCustom.name ? '.c-harga' : '.c-name').focus();
+        setMsg(badCustom.name ? 'Isi harga ' + badCustom.name + '.' : 'Isi nama menu custom.', 'err');
+        return;
+      }
+      if (l === 0 && b === 0 && addons.every(a => a.qty === 0) && !customs.length && !$('note').value.trim()) {
         setMsg('Enter portions sold, or a note (e.g. libur).', 'err');
         return;
       }
@@ -557,7 +604,8 @@
           lengkap: l,
           bubur: b,
           note: $('note').value.trim(),
-          addons: addons.map(a => ({ name: a.name, qty: a.qty, jual: a.jual, modal: a.modal }))
+          addons: addons.map(a => ({ name: a.name, qty: a.qty, jual: a.jual, modal: a.modal })),
+          customs: customs.map(c => ({ name: c.name, harga: c.harga }))
         });
     }
 
@@ -628,6 +676,8 @@
             '<div class="stat"><div class="k">Laku bubur saja</div><div class="v">' + sum(list, e => e.bubur) + ' porsi</div></div>' +
             '<div class="stat"><div class="k">Add on</div><div class="v">' + rp(addonRev) + '</div></div>' +
             '<div class="stat"><div class="k">Untung add on</div><div class="v">' + rp(addonUntung) + '</div></div>' +
+            '<div class="stat" style="grid-column:1/-1"><div class="k">Menu custom</div><div class="v">' +
+              rp(sum(list, e => e.revCustom || 0)) + '</div></div>' +
           '</div>' +
         '</div>';
 
@@ -659,6 +709,20 @@
           '</table></div>';
       }
 
+      // Custom menu by name
+      const byCustom = {};
+      list.forEach(e => (e.customs || []).forEach(c => {
+        const x = byCustom[c.name] = byCustom[c.name] || { n: 0, s: 0 };
+        x.n += 1; x.s += c.harga;
+      }));
+      if (Object.keys(byCustom).length) {
+        html += '<div class="card"><div class="label">Menu custom</div><table class="rtable">' +
+          '<tr><th>Nama</th><th>Jumlah</th><th>Total</th></tr>' +
+          Object.keys(byCustom).map(n =>
+            '<tr><td>' + esc(n) + '</td><td>' + byCustom[n].n + '×</td><td>' + rp(byCustom[n].s) + '</td></tr>').join('') +
+          '</table></div>';
+      }
+
       // Every input, grouped by day
       const days = [];
       list.forEach(e => {
@@ -679,6 +743,8 @@
             '<div class="line"><span>' + e.bubur + ' × bubur saja</span><span>' + rp(e.revB) + '</span></div>' +
             e.addons.map(a =>
               '<div class="line ao"><span>' + a.qty + ' × ' + esc(a.name) + '</span><span>' + rp(a.subtotal) + '</span></div>').join('') +
+            (e.customs || []).map(c =>
+              '<div class="line ao"><span>' + esc(c.name) + '</span><span>' + rp(c.harga) + '</span></div>').join('') +
             (e.note ? '<div class="note">📝 ' + esc(e.note) + '</div>' : '') +
           '</div>';
         });

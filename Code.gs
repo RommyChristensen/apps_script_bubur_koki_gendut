@@ -13,7 +13,7 @@ const HEADERS = [
   'Date', 'Branch', 'Bawa Porsi', 'Jam Mulai', 'Jam Selesai', 'Sisa Porsi',
   'Laku Lengkap', 'Laku Bubur Saja', 'Revenue Lengkap', 'Revenue Bubur',
   'Total Uang', 'Note', 'Saved at', 'Emailed at',
-  'Revenue Add On', 'Modal Add On'
+  'Revenue Add On', 'Modal Add On', 'Revenue Custom Menu'
 ];
 // Column number (1-based) by header name, e.g. COL('Total Uang') -> 11
 function COL(name) { return HEADERS.indexOf(name) + 1; }
@@ -24,6 +24,10 @@ const ADDON_HEADERS = [
   'Date', 'Branch', 'Add On', 'Laku', 'Harga Jual', 'Harga Modal',
   'Subtotal', 'Total Modal', 'Untung', 'Saved at'
 ];
+
+// One row per custom (free-text) menu item sold, linked the same way as add-ons
+const CUSTOM_SHEET_NAME = 'Custom Menu Sales';
+const CUSTOM_HEADERS = ['Date', 'Branch', 'Menu', 'Harga', 'Saved at'];
 
 const PRICE_SHEET_NAME = 'Master Harga';
 const PRICE_HEADERS = ['Branch', 'Harga Lengkap', 'Harga Bubur Saja', 'Updated at'];
@@ -60,17 +64,21 @@ function getSheet() {
   return sh;
 }
 
-function getAddonSheet() {
+// Get a sheet by name, creating it with a bold header row if missing
+function getOrCreateSheet_(name, headers) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
-  let sh = ss.getSheetByName(ADDON_SHEET_NAME);
+  let sh = ss.getSheetByName(name);
   if (!sh) {
-    sh = ss.insertSheet(ADDON_SHEET_NAME);
-    sh.appendRow(ADDON_HEADERS);
+    sh = ss.insertSheet(name);
+    sh.appendRow(headers);
     sh.setFrozenRows(1);
-    sh.getRange(1, 1, 1, ADDON_HEADERS.length).setFontWeight('bold').setBackground('#fde8d6');
+    sh.getRange(1, 1, 1, headers.length).setFontWeight('bold').setBackground('#fde8d6');
   }
   return sh;
 }
+
+function getAddonSheet() { return getOrCreateSheet_(ADDON_SHEET_NAME, ADDON_HEADERS); }
+function getCustomSheet() { return getOrCreateSheet_(CUSTOM_SHEET_NAME, CUSTOM_HEADERS); }
 
 function getPriceSheet() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -165,9 +173,18 @@ function saveSale(data) {
     .filter(a => a.name || a.qty || a.jual || a.modal);
   addons.forEach(a => { if (!a.name) throw new Error('Add on name is empty'); });
 
+  const customs = (Array.isArray(data.customs) ? data.customs : [])
+    .map(c => ({ name: String(c.name || '').trim(), harga: n(c.harga) }))
+    .filter(c => c.name || c.harga);
+  customs.forEach(c => {
+    if (!c.name) throw new Error('Nama menu custom kosong.');
+    if (!c.harga) throw new Error('Harga ' + c.name + ' harus lebih dari 0.');
+  });
+
   const revAddon = addons.reduce((s, a) => s + a.qty * a.jual, 0);
   const modalAddon = addons.reduce((s, a) => s + a.qty * a.modal, 0);
-  const total = revL + revB + revAddon;
+  const revCustom = customs.reduce((s, c) => s + c.harga, 0);
+  const total = revL + revB + revAddon + revCustom;
   const savedAt = new Date();
 
   const lock = LockService.getScriptLock();
@@ -189,7 +206,8 @@ function saveSale(data) {
       savedAt,
       '', // Emailed at – filled in by Email.gs
       revAddon,
-      modalAddon
+      modalAddon,
+      revCustom
     ]);
     if (addons.length) {
       const rows = addons.map(a => [
@@ -198,6 +216,11 @@ function saveSale(data) {
       ]);
       const ash = getAddonSheet();
       ash.getRange(ash.getLastRow() + 1, 1, rows.length, ADDON_HEADERS.length).setValues(rows);
+    }
+    if (customs.length) {
+      const rows = customs.map(c => [data.date, data.branch, c.name, c.harga, savedAt]);
+      const csh = getCustomSheet();
+      csh.getRange(csh.getLastRow() + 1, 1, rows.length, CUSTOM_HEADERS.length).setValues(rows);
     }
   } finally {
     lock.releaseLock();
@@ -236,6 +259,18 @@ function getSales(from, to, pin) {
     });
   }
 
+  // Custom menu items, keyed the same way
+  const customsByKey = {};
+  const csh = ss.getSheetByName(CUSTOM_SHEET_NAME);
+  if (csh && csh.getLastRow() > 1) {
+    csh.getRange(2, 1, csh.getLastRow() - 1, CUSTOM_HEADERS.length).getValues().forEach(r => {
+      const d = day(r[0]);
+      if (!inRange(d)) return;
+      const key = d + '|' + r[1] + '|' + stamp(r[4]);
+      (customsByKey[key] = customsByKey[key] || []).push({ name: String(r[2]), harga: num(r[3]) });
+    });
+  }
+
   const entries = [];
   const sh = ss.getSheetByName(SHEET_NAME);
   if (sh && sh.getLastRow() > 1) {
@@ -259,10 +294,12 @@ function getSales(from, to, pin) {
         revB: num(v(r, 'Revenue Bubur')),
         revAddon: num(v(r, 'Revenue Add On')),
         modalAddon: num(v(r, 'Modal Add On')),
+        revCustom: num(v(r, 'Revenue Custom Menu')),
         total: num(v(r, 'Total Uang')),
         note: String(v(r, 'Note') || ''),
         savedAt: saved,
-        addons: addonsByKey[d + '|' + branch + '|' + saved] || []
+        addons: addonsByKey[d + '|' + branch + '|' + saved] || [],
+        customs: customsByKey[d + '|' + branch + '|' + saved] || []
       });
     });
   }
