@@ -449,6 +449,8 @@
         <button type="button" data-q="7">7 hari</button>
         <button type="button" data-q="month">Bulan ini</button>
       </div>
+      <div class="sub" style="font-size:12px;font-weight:600;color:var(--muted);margin:14px 0 0">Cabang</div>
+      <div class="quick" id="rBranches" style="margin-top:6px"></div>
     </div>
     <div id="rmsg"></div>
     <div id="report"></div>
@@ -716,6 +718,8 @@
         .withSuccessHandler(res => {
           if (req !== reportReq) return;
           $('rmsg').textContent = '';
+          lastReport = res;
+          renderReportBranches();
           renderReport(res);
         })
         .withFailureHandler(e => {
@@ -727,10 +731,37 @@
         .getSales(from, to, pin);
     }
 
+    // Branch filter: 'all' or one branch name. Applied on the screen, no reload needed.
+    let rBranch = 'all';
+    let lastReport = null;
+
+    function renderReportBranches() {
+      const names = Object.keys(PRICES);
+      // Also offer branches found in the data that are no longer in Master Harga
+      if (lastReport) lastReport.entries.forEach(e => { if (names.indexOf(e.branch) === -1) names.push(e.branch); });
+      if (rBranch !== 'all' && names.indexOf(rBranch) === -1) names.push(rBranch);
+      const box = $('rBranches');
+      box.innerHTML = '';
+      ['all'].concat(names).forEach(n => {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.textContent = n === 'all' ? 'Semua' : n;
+        btn.classList.toggle('active', n === rBranch);
+        btn.onclick = () => {
+          rBranch = n;
+          renderReportBranches();
+          if (lastReport) renderReport(lastReport);
+        };
+        box.appendChild(btn);
+      });
+    }
+
     function renderReport(res) {
-      const list = res.entries;
+      const all = rBranch === 'all';
+      const list = all ? res.entries : res.entries.filter(e => e.branch === rBranch);
       if (!list.length) {
-        $('report').innerHTML = '<div class="card empty">Belum ada penjualan di periode ini.</div>';
+        $('report').innerHTML = '<div class="card empty">Belum ada penjualan' +
+          (all ? '' : ' ' + esc(rBranch)) + ' di periode ini.</div>';
         return;
       }
       const sum = (arr, f) => arr.reduce((s, e) => s + f(e), 0);
@@ -743,7 +774,7 @@
         '<div class="card">' +
           '<div class="total"><div class="label" style="margin:0">Total uang</div>' +
           '<div class="amount">' + rp(total) + '</div></div>' +
-          '<div class="breakdown">' + esc(range) + ' · ' + list.length + ' input</div>' +
+          '<div class="breakdown">' + esc(range) + (all ? '' : ' · ' + esc(rBranch)) + ' · ' + list.length + ' input</div>' +
           '<div class="stats">' +
             '<div class="stat"><div class="k">Laku lengkap</div><div class="v">' + sum(list, e => e.lengkap) + ' porsi</div></div>' +
             '<div class="stat"><div class="k">Laku bubur saja</div><div class="v">' + sum(list, e => e.bubur) + ' porsi</div></div>' +
@@ -760,12 +791,14 @@
         const b = byBranch[e.branch] = byBranch[e.branch] || { l: 0, bu: 0, a: 0, t: 0 };
         b.l += e.lengkap; b.bu += e.bubur; b.a += e.revAddon; b.t += e.total;
       });
-      html += '<div class="card"><div class="label">Per cabang</div><table class="rtable">' +
-        '<tr><th>Cabang</th><th>Lengkap</th><th>Bubur</th><th>Total</th></tr>' +
-        Object.keys(byBranch).map(b =>
-          '<tr><td>' + esc(b) + '</td><td>' + byBranch[b].l + '</td><td>' + byBranch[b].bu + '</td><td>' +
-          rp(byBranch[b].t) + '</td></tr>').join('') +
-        '</table></div>';
+      if (all) { // with one branch picked this would just repeat the summary
+        html += '<div class="card"><div class="label">Per cabang</div><table class="rtable">' +
+          '<tr><th>Cabang</th><th>Lengkap</th><th>Bubur</th><th>Total</th></tr>' +
+          Object.keys(byBranch).map(b =>
+            '<tr><td>' + esc(b) + '</td><td>' + byBranch[b].l + '</td><td>' + byBranch[b].bu + '</td><td>' +
+            rp(byBranch[b].t) + '</td></tr>').join('') +
+          '</table></div>';
+      }
 
       // Add-ons by name
       const byAddon = {};
@@ -832,6 +865,7 @@
       PRICES = p || {};
       if (!PRICES[branch]) branch = Object.keys(PRICES)[0] || null;
       renderBranches();
+      renderReportBranches();
       update();
     }
 
