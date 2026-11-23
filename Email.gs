@@ -12,7 +12,7 @@
 // 2. Project Settings: time zone = (GMT+07:00) Jakarta.
 // 3. Run setupDailyEmail() ONCE and approve permissions.
 
-const REPORT_EMAIL = 'your.email@gmail.com';
+const REPORT_EMAIL = PropertiesService.getScriptProperties().getProperty('EMAIL_REPORT');
 
 function sendDailyReport() {
   const lock = LockService.getScriptLock();
