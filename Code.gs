@@ -100,7 +100,7 @@ function getPrices() {
   return prices;
 }
 
-// ----- PIN for the Harga tab -----
+// ----- PIN for the Laporan and Harga tabs -----
 // Set it in Project Settings > Script Properties: property PRICE_PIN, value e.g. 4821.
 function checkPin_(pin) {
   const real = String(PropertiesService.getScriptProperties().getProperty('PRICE_PIN') || '').trim();
@@ -108,7 +108,7 @@ function checkPin_(pin) {
   if (String(pin || '').trim() !== real) throw new Error('PIN salah.');
 }
 
-// Called by the app to unlock the Harga tab
+// Called by the app to unlock the Laporan and Harga tabs
 function verifyPin(pin) {
   checkPin_(pin);
   return true;
@@ -206,8 +206,9 @@ function saveSale(data) {
 }
 
 // ----- Laporan: sales between two dates (inclusive), 'yyyy-MM-dd' -----
-// Returns plain values only (google.script.run can't send Date objects).
-function getSales(from, to) {
+// Needs the PIN. Returns plain values only (google.script.run can't send Date objects).
+function getSales(from, to, pin) {
+  checkPin_(pin);
   const isDay = s => /^\d{4}-\d{2}-\d{2}$/.test(String(s));
   if (!isDay(from) || !isDay(to)) throw new Error('Tanggal tidak valid.');
   if (from > to) { const t = from; from = to; to = t; }

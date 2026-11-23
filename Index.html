@@ -230,9 +230,9 @@
     .empty { text-align: center; color: var(--muted); padding: 24px 0; }
     #rmsg { text-align: center; margin-top: 14px; font-weight: 600; min-height: 22px; }
     #rmsg.err { color: var(--err); }
-    #pmsg { text-align: center; margin-top: 14px; font-weight: 600; min-height: 22px; }
+    #pmsg, #pinMsg { text-align: center; margin-top: 14px; font-weight: 600; min-height: 22px; }
     #pmsg.ok { color: var(--ok); }
-    #pmsg.err { color: var(--err); }
+    #pmsg.err, #pinMsg.err { color: var(--err); }
     #msg { text-align: center; margin-top: 14px; font-weight: 600; min-height: 22px; }
     #msg.ok { color: var(--ok); }
     #msg.err { color: var(--err); }
@@ -350,6 +350,18 @@
     <div id="msg"></div>
   </main>
 
+  <!-- Shown instead of Laporan / Harga until the PIN is entered -->
+  <main id="pinView" hidden>
+    <div class="card">
+      <div class="label">PIN</div>
+      <p class="hint-text" id="pinHint">Masukkan PIN.</p>
+      <input type="password" id="pin" inputmode="numeric" autocomplete="off"
+             onkeydown="if (event.key === 'Enter') unlock()">
+      <button class="save" id="unlockBtn" style="margin-top:12px" onclick="unlock()">Buka</button>
+    </div>
+    <div id="pinMsg"></div>
+  </main>
+
   <main id="reportView" hidden>
     <div class="card">
       <div class="label">Periode</div>
@@ -375,15 +387,6 @@
   </main>
 
   <main id="masterView" hidden>
-    <div class="card" id="pinCard">
-      <div class="label">PIN</div>
-      <p class="hint-text">Masukkan PIN untuk mengubah harga.</p>
-      <input type="password" id="pin" inputmode="numeric" autocomplete="off"
-             onkeydown="if (event.key === 'Enter') unlock()">
-      <button class="save" id="unlockBtn" style="margin-top:12px" onclick="unlock()">Buka</button>
-    </div>
-
-    <div id="priceEditor" hidden>
     <div class="card">
       <div class="label">Harga per porsi</div>
       <p class="hint-text">Harga baru dipakai untuk penjualan berikutnya. Data lama tidak berubah.</p>
@@ -391,7 +394,6 @@
       <button type="button" class="add-btn" onclick="addPriceRow()">+ Tambah cabang</button>
     </div>
     <button class="save" id="savePricesBtn" onclick="savePrices()">Simpan harga</button>
-    </div>
     <div id="pmsg"></div>
   </main>
 
@@ -597,10 +599,11 @@
         })
         .withFailureHandler(e => {
           if (req !== reportReq) return;
+          if (/PIN/.test(e.message)) { pin = null; showView('report', e.message); return; }
           $('rmsg').className = 'err';
           $('rmsg').textContent = 'Error: ' + e.message;
         })
-        .getSales(from, to);
+        .getSales(from, to, pin);
     }
 
     function renderReport(res) {
@@ -700,44 +703,55 @@
         .getPrices();
     }
 
-    // PIN is kept only in memory: reloading the app locks the Harga tab again
+    // PIN for Laporan and Harga. Kept only in memory: reloading the app locks them again.
     let pin = null;
+    let pinFor = null; // the tab to open once the PIN is accepted
 
-    function showPriceEditor() {
-      $('pinCard').hidden = !!pin;
-      $('priceEditor').hidden = !pin;
-      if (pin) renderPriceRows(); else { $('pin').value = ''; $('pin').focus(); }
+    function setPinMsg(text, cls) {
+      $('pinMsg').textContent = text;
+      $('pinMsg').className = cls || '';
     }
 
     function unlock() {
       const entered = $('pin').value.trim();
-      if (!entered) return setPMsg('Masukkan PIN.', 'err');
+      if (!entered) return setPinMsg('Masukkan PIN.', 'err');
       const btn = $('unlockBtn');
       btn.disabled = true;
-      setPMsg('Memeriksa...');
+      setPinMsg('Memeriksa...');
       google.script.run
         .withSuccessHandler(() => {
           btn.disabled = false;
           pin = entered;
-          setPMsg('');
-          showPriceEditor();
+          showView(pinFor);
         })
         .withFailureHandler(e => {
           btn.disabled = false;
           $('pin').value = '';
-          setPMsg(e.message, 'err');
+          setPinMsg(e.message, 'err');
         })
         .verifyPin(entered);
     }
 
-    function showView(name) {
+    // errorMsg: shown on the PIN screen when a request was refused for a wrong PIN
+    function showView(name, errorMsg) {
+      const locked = name !== 'sales' && !pin;
+      $('pinView').hidden = !locked;
       $('salesView').hidden = name !== 'sales';
-      $('reportView').hidden = name !== 'report';
-      $('masterView').hidden = name !== 'master';
+      $('reportView').hidden = locked || name !== 'report';
+      $('masterView').hidden = locked || name !== 'master';
       $('tabSales').classList.toggle('active', name === 'sales');
       $('tabReport').classList.toggle('active', name === 'report');
       $('tabMaster').classList.toggle('active', name === 'master');
-      if (name === 'master') { setPMsg(''); showPriceEditor(); }
+      if (locked) {
+        pinFor = name;
+        $('pinHint').textContent = name === 'report'
+          ? 'Masukkan PIN untuk melihat laporan.' : 'Masukkan PIN untuk mengubah harga.';
+        $('pin').value = '';
+        setPinMsg(errorMsg || '', errorMsg ? 'err' : '');
+        $('pin').focus();
+        return;
+      }
+      if (name === 'master') { setPMsg(''); renderPriceRows(); }
       if (name === 'report') {
         if (!$('rFrom').value) setRange('today'); else loadReport();
       }
@@ -803,7 +817,7 @@
         })
         .withFailureHandler(e => {
           btn.disabled = false;
-          if (/PIN/.test(e.message)) { pin = null; showPriceEditor(); }
+          if (/PIN/.test(e.message)) { pin = null; showView('master', e.message); return; }
           setPMsg('Error: ' + e.message, 'err');
         })
         .savePrices(list, pin);
