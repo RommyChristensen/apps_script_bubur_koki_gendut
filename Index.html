@@ -490,8 +490,11 @@
           '<input type="text" class="c-name" placeholder="Nama menu, e.g. nasi kuning">' +
           '<button type="button" class="addon-remove" title="Hapus">×</button>' +
         '</div>' +
-        '<div style="margin-top:8px"><div class="sub" style="font-size:12px;color:var(--muted);margin-bottom:4px">Harga</div>' +
-          '<input type="number" class="c-harga" min="0" inputmode="numeric" placeholder="0"></div>';
+        '<div class="price-nums">' +
+          '<div><div class="sub">Laku</div><input type="number" class="c-qty" min="0" value="1" inputmode="numeric"></div>' +
+          '<div><div class="sub">Harga</div><input type="number" class="c-harga" min="0" inputmode="numeric" placeholder="0"></div>' +
+        '</div>' +
+        '<div class="addon-sub"><span class="calc"></span><span class="amt"></span></div>';
       row.querySelector('.addon-remove').onclick = () => { row.remove(); update(); };
       row.querySelectorAll('input').forEach(i => i.oninput = update);
       $('customs').appendChild(row);
@@ -504,6 +507,7 @@
       return Array.from($('customs').children).map(row => ({
         row: row,
         name: row.querySelector('.c-name').value.trim(),
+        qty: Math.floor(num(row.querySelector('.c-qty'))),
         harga: num(row.querySelector('.c-harga'))
       })).filter(c => c.name || c.harga);
     }
@@ -528,7 +532,14 @@
       $('addonTotal').innerHTML = $('addons').children.length
         ? '<span>Total add on</span><span>' + rp(addonSum) + '</span>' : '';
 
-      const customSum = readCustoms().reduce((s, c) => s + c.harga, 0);
+      let customSum = 0;
+      Array.from($('customs').children).forEach(row => {
+        const q = Math.floor(num(row.querySelector('.c-qty')));
+        const harga = num(row.querySelector('.c-harga'));
+        customSum += q * harga;
+        row.querySelector('.calc').textContent = q + ' × ' + rp(harga);
+        row.querySelector('.amt').textContent = rp(q * harga);
+      });
       $('customTotal').innerHTML = $('customs').children.length
         ? '<span>Total menu custom</span><span>' + rp(customSum) + '</span>' : '';
 
@@ -567,10 +578,11 @@
         return;
       }
       const customs = readCustoms();
-      const badCustom = customs.find(c => !c.name || !c.harga);
+      const badCustom = customs.find(c => !c.name || !c.qty || !c.harga);
       if (badCustom) {
-        badCustom.row.querySelector(badCustom.name ? '.c-harga' : '.c-name').focus();
-        setMsg(badCustom.name ? 'Isi harga ' + badCustom.name + '.' : 'Isi nama menu custom.', 'err');
+        const c = badCustom;
+        c.row.querySelector(!c.name ? '.c-name' : !c.qty ? '.c-qty' : '.c-harga').focus();
+        setMsg(!c.name ? 'Isi nama menu custom.' : !c.qty ? 'Isi laku ' + c.name + '.' : 'Isi harga ' + c.name + '.', 'err');
         return;
       }
       if (l === 0 && b === 0 && addons.every(a => a.qty === 0) && !customs.length && !$('note').value.trim()) {
@@ -605,7 +617,7 @@
           bubur: b,
           note: $('note').value.trim(),
           addons: addons.map(a => ({ name: a.name, qty: a.qty, jual: a.jual, modal: a.modal })),
-          customs: customs.map(c => ({ name: c.name, harga: c.harga }))
+          customs: customs.map(c => ({ name: c.name, qty: c.qty, harga: c.harga }))
         });
     }
 
@@ -713,13 +725,13 @@
       const byCustom = {};
       list.forEach(e => (e.customs || []).forEach(c => {
         const x = byCustom[c.name] = byCustom[c.name] || { n: 0, s: 0 };
-        x.n += 1; x.s += c.harga;
+        x.n += c.qty; x.s += c.subtotal;
       }));
       if (Object.keys(byCustom).length) {
         html += '<div class="card"><div class="label">Menu custom</div><table class="rtable">' +
-          '<tr><th>Nama</th><th>Jumlah</th><th>Total</th></tr>' +
+          '<tr><th>Nama</th><th>Laku</th><th>Total</th></tr>' +
           Object.keys(byCustom).map(n =>
-            '<tr><td>' + esc(n) + '</td><td>' + byCustom[n].n + '×</td><td>' + rp(byCustom[n].s) + '</td></tr>').join('') +
+            '<tr><td>' + esc(n) + '</td><td>' + byCustom[n].n + '</td><td>' + rp(byCustom[n].s) + '</td></tr>').join('') +
           '</table></div>';
       }
 
@@ -744,7 +756,7 @@
             e.addons.map(a =>
               '<div class="line ao"><span>' + a.qty + ' × ' + esc(a.name) + '</span><span>' + rp(a.subtotal) + '</span></div>').join('') +
             (e.customs || []).map(c =>
-              '<div class="line ao"><span>' + esc(c.name) + '</span><span>' + rp(c.harga) + '</span></div>').join('') +
+              '<div class="line ao"><span>' + c.qty + ' × ' + esc(c.name) + '</span><span>' + rp(c.subtotal) + '</span></div>').join('') +
             (e.note ? '<div class="note">📝 ' + esc(e.note) + '</div>' : '') +
           '</div>';
         });

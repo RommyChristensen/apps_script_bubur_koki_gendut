@@ -25,9 +25,11 @@ const ADDON_HEADERS = [
   'Subtotal', 'Total Modal', 'Untung', 'Saved at'
 ];
 
-// One row per custom (free-text) menu item sold, linked the same way as add-ons
+// One row per custom (free-text) menu item sold, linked the same way as add-ons.
+// Harga is the price per item. Laku and Subtotal were added later, so they sit at
+// the end; older rows without Laku count as 1.
 const CUSTOM_SHEET_NAME = 'Custom Menu Sales';
-const CUSTOM_HEADERS = ['Date', 'Branch', 'Menu', 'Harga', 'Saved at'];
+const CUSTOM_HEADERS = ['Date', 'Branch', 'Menu', 'Harga', 'Saved at', 'Laku', 'Subtotal'];
 
 const PRICE_SHEET_NAME = 'Master Harga';
 const PRICE_HEADERS = ['Branch', 'Harga Lengkap', 'Harga Bubur Saja', 'Updated at'];
@@ -78,7 +80,11 @@ function getOrCreateSheet_(name, headers) {
 }
 
 function getAddonSheet() { return getOrCreateSheet_(ADDON_SHEET_NAME, ADDON_HEADERS); }
-function getCustomSheet() { return getOrCreateSheet_(CUSTOM_SHEET_NAME, CUSTOM_HEADERS); }
+function getCustomSheet() {
+  const sh = getOrCreateSheet_(CUSTOM_SHEET_NAME, CUSTOM_HEADERS);
+  ensureHeaders(sh, CUSTOM_HEADERS);
+  return sh;
+}
 
 function getPriceSheet() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -174,16 +180,17 @@ function saveSale(data) {
   addons.forEach(a => { if (!a.name) throw new Error('Add on name is empty'); });
 
   const customs = (Array.isArray(data.customs) ? data.customs : [])
-    .map(c => ({ name: String(c.name || '').trim(), harga: n(c.harga) }))
+    .map(c => ({ name: String(c.name || '').trim(), qty: Math.floor(n(c.qty)), harga: n(c.harga) }))
     .filter(c => c.name || c.harga);
   customs.forEach(c => {
     if (!c.name) throw new Error('Nama menu custom kosong.');
+    if (!c.qty) throw new Error('Laku ' + c.name + ' harus lebih dari 0.');
     if (!c.harga) throw new Error('Harga ' + c.name + ' harus lebih dari 0.');
   });
 
   const revAddon = addons.reduce((s, a) => s + a.qty * a.jual, 0);
   const modalAddon = addons.reduce((s, a) => s + a.qty * a.modal, 0);
-  const revCustom = customs.reduce((s, c) => s + c.harga, 0);
+  const revCustom = customs.reduce((s, c) => s + c.qty * c.harga, 0);
   const total = revL + revB + revAddon + revCustom;
   const savedAt = new Date();
 
@@ -218,7 +225,7 @@ function saveSale(data) {
       ash.getRange(ash.getLastRow() + 1, 1, rows.length, ADDON_HEADERS.length).setValues(rows);
     }
     if (customs.length) {
-      const rows = customs.map(c => [data.date, data.branch, c.name, c.harga, savedAt]);
+      const rows = customs.map(c => [data.date, data.branch, c.name, c.harga, savedAt, c.qty, c.qty * c.harga]);
       const csh = getCustomSheet();
       csh.getRange(csh.getLastRow() + 1, 1, rows.length, CUSTOM_HEADERS.length).setValues(rows);
     }
@@ -263,11 +270,15 @@ function getSales(from, to, pin) {
   const customsByKey = {};
   const csh = ss.getSheetByName(CUSTOM_SHEET_NAME);
   if (csh && csh.getLastRow() > 1) {
+    ensureHeaders(csh, CUSTOM_HEADERS);
     csh.getRange(2, 1, csh.getLastRow() - 1, CUSTOM_HEADERS.length).getValues().forEach(r => {
       const d = day(r[0]);
       if (!inRange(d)) return;
       const key = d + '|' + r[1] + '|' + stamp(r[4]);
-      (customsByKey[key] = customsByKey[key] || []).push({ name: String(r[2]), harga: num(r[3]) });
+      const qty = r[5] === '' ? 1 : num(r[5]); // rows saved before Laku existed = 1
+      (customsByKey[key] = customsByKey[key] || []).push({
+        name: String(r[2]), harga: num(r[3]), qty: qty, subtotal: r[6] === '' ? qty * num(r[3]) : num(r[6])
+      });
     });
   }
 
